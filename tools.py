@@ -13,6 +13,7 @@ Tools:
 """
 
 import os
+import re
 
 from dotenv import load_dotenv
 from groq import Groq
@@ -22,7 +23,15 @@ from utils.data_loader import load_listings
 load_dotenv()
 
 
+def tokenize(text: str) -> set[str]:
+    """Lowercase `text` and split it into a set of alphanumeric word tokens."""
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+
 # ── Groq client ───────────────────────────────────────────────────────────────
+
+MODEL = "llama-3.3-70b-versatile"
+
 
 def _get_groq_client():
     """Initialize and return a Groq client using GROQ_API_KEY from .env."""
@@ -32,6 +41,17 @@ def _get_groq_client():
             "GROQ_API_KEY not set. Add it to a .env file in the project root."
         )
     return Groq(api_key=api_key)
+
+
+def _chat(prompt: str, temperature: float = 0.7) -> str:
+    """Send a single user prompt to the LLM and return the response text."""
+    client = _get_groq_client()
+    response = client.chat.completions.create(
+        model=MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=temperature,
+    )
+    return (response.choices[0].message.content or "").strip()
 
 
 # ── Tool 1: search_listings ───────────────────────────────────────────────────
@@ -69,8 +89,36 @@ def search_listings(
 
     Before writing code, fill in the Tool 1 section of planning.md.
     """
-    # Replace this with your implementation
-    return []
+    listings = load_listings()
+    query_words = tokenize(description)
+
+    scored: list[tuple[int, dict]] = []
+    for listing in listings:
+        # Hard filter: price ceiling (inclusive).
+        if max_price is not None and listing["price"] > max_price:
+            continue
+
+        # Hard filter: size, case-insensitive substring (e.g. "M" matches "S/M").
+        if size is not None and size.lower() not in listing["size"].lower():
+            continue
+
+        # Score by keyword overlap across title, description, style_tags, colors.
+        searchable = " ".join(
+            [listing["title"], listing["description"]]
+            + listing["style_tags"]
+            + listing["colors"]
+        )
+        listing_words = tokenize(searchable)
+        score = len(query_words & listing_words)
+
+        # Drop listings with no keyword overlap.
+        if score > 0:
+            scored.append((score, listing))
+
+    # Sort by score, highest first. Python's sort is stable, so listings with
+    # equal scores keep their original dataset order.
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    return [listing for _, listing in scored]
 
 
 # ── Tool 2: suggest_outfit ────────────────────────────────────────────────────
@@ -100,8 +148,39 @@ def suggest_outfit(new_item: dict, wardrobe: dict) -> str:
 
     Before writing code, fill in the Tool 2 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    item_line = (
+        f"{new_item['title']} — a {new_item['category']} "
+        f"(style: {', '.join(new_item['style_tags'])}; "
+        f"colors: {', '.join(new_item['colors'])})"
+    )
+
+    items = wardrobe.get("items", [])
+
+    if items:
+        wardrobe_lines = "\n".join(
+            f"- {w['name']} ({w['category']}; "
+            f"colors: {', '.join(w['colors'])}; "
+            f"style: {', '.join(w['style_tags'])})"
+            for w in items
+        )
+        prompt = (
+            "You are a personal stylist helping someone style a secondhand find.\n\n"
+            f"The new item they're considering:\n{item_line}\n\n"
+            f"Pieces they already own:\n{wardrobe_lines}\n\n"
+            "Suggest 1-2 complete outfits that pair the new item with specific "
+            "pieces from their wardrobe. Refer to the owned pieces by name. Keep "
+            "it concise, friendly, and practical."
+        )
+    else:
+        prompt = (
+            "You are a personal stylist helping someone style a secondhand find.\n\n"
+            f"The new item they're considering:\n{item_line}\n\n"
+            "They haven't shared their wardrobe yet, so give general styling advice "
+            "for this piece: what kinds of items pair well with it, what vibe it "
+            "suits, and how to wear it. Keep it concise, friendly, and practical."
+        )
+
+    return _chat(prompt, temperature=0.7)
 
 
 # ── Tool 3: create_fit_card ───────────────────────────────────────────────────
@@ -133,5 +212,25 @@ def create_fit_card(outfit: str, new_item: dict) -> str:
 
     Before writing code, fill in the Tool 3 section of planning.md.
     """
-    # Replace this with your implementation
-    return ""
+    # Guard: an empty or whitespace-only outfit means there's nothing to caption.
+    if not outfit or not outfit.strip():
+        return (
+            "Could not create a fit card: no outfit suggestion was provided. "
+            "Run suggest_outfit first to get an outfit to caption."
+        )
+
+    prompt = (
+        "You write short, casual outfit captions for Instagram/TikTok OOTD posts.\n\n"
+        f"Item: {new_item['title']}\n"
+        f"Price: ${new_item['price']}\n"
+        f"Platform: {new_item['platform']}\n"
+        f"The outfit it's styled in:\n{outfit}\n\n"
+        "Write a 2-4 sentence caption that:\n"
+        "- Sounds like a real person posting their fit, not a product listing\n"
+        "- Mentions the item name, its price, and the platform naturally, once each\n"
+        "- Captures the specific vibe of the outfit\n"
+        "Return only the caption text."
+    )
+
+    # Higher temperature so captions vary across runs and items.
+    return _chat(prompt, temperature=1.0)
