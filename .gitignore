@@ -9,9 +9,13 @@ __pycache__/
 .venv/
 venv/
 env/
+.python-version
+demo_script.md 
+
 
 # Jupyter
 .ipynb_checkpoints/
 
 # macOS
+.vscode
 .DS_Store
