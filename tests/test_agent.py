@@ -39,6 +39,15 @@ def test_parse_query_keyword_price_forms():
     assert _parse_query("boots max $50")["max_price"] == 50.0
 
 
+def test_parse_query_price_with_thousands_separator():
+    """A comma'd price like $1,000 parses as 1000.0, not 1.0."""
+    parsed = _parse_query("designer coat under $1,000")
+
+    assert parsed["max_price"] == 1000.0
+    assert "1,000" not in parsed["description"]
+    assert ",000" not in parsed["description"]
+
+
 # ── planning loop ─────────────────────────────────────────────────────────────
 
 def test_run_agent_happy_path(monkeypatch):

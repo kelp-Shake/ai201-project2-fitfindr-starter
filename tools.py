@@ -102,6 +102,13 @@ def search_listings(
         if size is not None and size.lower() not in listing["size"].lower():
             continue
 
+        # No search keywords (e.g. a size/price-only query like "size M under $30")
+        # means there's nothing to rank by — keep every listing that cleared the
+        # hard filters rather than dropping them all as score-0.
+        if not query_words:
+            scored.append((0, listing))
+            continue
+
         # Score by keyword overlap across title, description, style_tags, colors.
         searchable = " ".join(
             [listing["title"], listing["description"]]

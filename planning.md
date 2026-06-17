@@ -220,6 +220,9 @@ asked it to implement one function at a time, reviewing each against the spec be
   keyword overlap = the count of distinct query words appearing across
   title + description + style_tags + colors (equal weight), drops score-0 listings, and returns
   the rest sorted by score descending (stable sort keeps dataset order on ties).
+  If the query has no keywords at all (a size/price-only search like "size M under $30"),
+  it keeps every listing that passed the hard filters instead of dropping them all as score-0,
+  so filters-only browsing still returns results.
   *Decision — regex vs. LLM for parsing:* parsing the user query into
   {description, size, max_price} stays as regex in the planning loop (Milestone 4), not an LLM
   call — it's cheap, deterministic, and easy to test. The LLM is reserved for the two
@@ -250,7 +253,9 @@ that flow.
 
 + **Query parsing (`_parse_query`)** — regex, not an LLM (the decision from Milestone 3). It pulls
   `max_price` from forms like "under $30", "below 25", "less than 40", "max $50", "up to 20", or a
-  bare "$30"; `size` from the token after "size" ("size M", "size XXS", "size 9"); and `description`
+  bare "$30" (thousands separators like "$1,000" are handled — commas are stripped before
+  parsing, so it reads as 1000.0); `size` from the token after "size" ("size M", "size XXS",
+  "size 9"); and `description`
   is the query with those price/size phrases stripped. Because search_listings tokenizes the
   description, any leftover filler words simply don't match a listing and add nothing to the score.
 

@@ -26,9 +26,11 @@ from tools import search_listings, suggest_outfit, create_fit_card
 # ── query parsing ───────────────────────────────────────────────────────────────
 
 # "under $30", "below 25", "less than 40", "max $50", "up to 20", or a bare "$30".
+# Digits may include thousands separators ("$1,000"); commas are stripped before
+# the number is parsed.
 _PRICE_RE = re.compile(
-    r"(?:under|below|less than|max(?:imum)?|up to|<)\s*\$?\s*(\d+(?:\.\d+)?)"
-    r"|\$\s*(\d+(?:\.\d+)?)",
+    r"(?:under|below|less than|max(?:imum)?|up to|<)\s*\$?\s*(\d[\d,]*(?:\.\d+)?)"
+    r"|\$\s*(\d[\d,]*(?:\.\d+)?)",
     re.IGNORECASE,
 )
 
@@ -49,7 +51,8 @@ def _parse_query(query: str) -> dict:
     price_match = _PRICE_RE.search(query)
     if price_match:
         # Group 1 is the keyword form ("under 30"), group 2 the bare "$30" form.
-        max_price = float(price_match.group(1) or price_match.group(2))
+        raw_price = price_match.group(1) or price_match.group(2)
+        max_price = float(raw_price.replace(",", ""))
 
     size = None
     size_match = _SIZE_RE.search(query)

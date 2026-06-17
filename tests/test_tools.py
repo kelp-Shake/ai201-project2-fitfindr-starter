@@ -70,6 +70,15 @@ def test_search_size_filter_case_insensitive_substring():
     assert all("m" in item["size"].lower() for item in results)
 
 
+def test_search_empty_description_returns_filter_matches():
+    """A size/price-only query (no keywords) returns everything passing the filters."""
+    results = search_listings("", size="M", max_price=30.0)
+
+    assert len(results) > 0  # filters-only browsing should not come back empty
+    assert all("m" in item["size"].lower() for item in results)
+    assert all(item["price"] <= 30.0 for item in results)
+
+
 # ── Tool 2: suggest_outfit ────────────────────────────────────────────────────
 
 def test_suggest_outfit_with_wardrobe(monkeypatch):
